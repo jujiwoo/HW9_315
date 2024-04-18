@@ -1,0 +1,196 @@
+---
+title: "HW9_315"
+author: "Justin Song - jjs5874 - Scott - https://github.com/jujiwoo/HW9_315"
+date: "2024-04-18"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=5, fig.width=10, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=100))
+```
+
+```{r, echo=FALSE, results='hide', message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(mosaic)
+library(MatchIt)
+library(moderndive)
+
+turnout = read.csv('turnout.csv')
+solder = read.csv('solder.csv')
+```
+
+#Problem 1
+
+**PART A**
+
+```{r, echo=FALSE}
+gotv_true = filter(turnout, GOTV_call == 1)
+vote_1998_call = filter(gotv_true, voted1998 == 1)
+gotv_1998 = nrow(vote_1998_call / nrow(gotv_true))
+
+gotv_1998
+
+#sample prop
+gotv_false = filter(turnout, GOTV_call == 0)
+vote_1998_nocall = filter(gotv_false, voted1998 == 1)
+nogotv_1998 = nrow(vote_1998_nocall) / nrow(gotv_false)
+
+nogotv_1998
+
+confint = prop.test(voted1998 ~ GOTV_call, data = turnout)
+confint
+
+```
+
+**PART B**
+
+Consider the voted1996, AGE, and MAJORPTY variables. Provide evidence that at all three of these
+variables are confounders that prevent the difference you observed in Part A from representing the truecausal effect of the GOTV call on the likelihood that a person voted in 1998. Confounders here would be factors that make someone more likely to receive a GOTV call and to have voted in 1998.
+
+```{r, echo=FALSE}
+table1 = xtabs(~ voted1996 + voted1998, data = turnout) %>%
+  prop.table(margin=2) %>%
+  round(4)
+
+rownames(table1) = c("Did not vote in 1996", "Voted in 1996")
+colnames(table1) = c("Did not vote in 1998", "Voted in 1998")
+kable(table1, digits = 2)
+
+table2 = xtabs(~ voted1996 + GOTV_call, data = turnout) %>%
+  prop.table(margin=2) %>%
+  round(4)
+
+rownames(table2) = c("Did not vote in 1996", "Voted in 1996")
+colnames(table2) = c("Did not receive GOTV call", "Received GOTV call")
+kable(table2, digits = 2)
+
+
+
+ggplot(turnout, aes(x = factor(voted1998), y = AGE, fill = factor(GOTV_call))) + 
+  geom_boxplot() + 
+  labs(title = "Voter Turnout in 1998 by GOTV Call and Age", 
+       x = "Voted in 1998", y = "Age", 
+       fill = "GOTV Call") + 
+  scale_fill_manual(name = "GOTV Call", labels = c("Did Not Receive", "Received"), 
+                    values = c("red", "blue")) +
+  scale_x_discrete(labels = c("No", "Yes"))
+
+ggplot(turnout, aes(x = factor(GOTV_call), y = voted1998, fill = factor(MAJORPTY))) + 
+  geom_bar(stat = "identity") + 
+  facet_wrap(~MAJORPTY, labeller = labeller(MAJORPTY = c('0' = '', '1' = ''))) + 
+  labs(title = "Voter Turnout in 1998 by GOTV Call and Political Party Registration", 
+       x = "Received GOTV Call", y = "Number of Voters in 1998", 
+       fill = "Political Party") + 
+  scale_fill_manual(name = "Registered to Major Party", 
+                    labels = c("No", "Yes"), 
+                    values = c("red", "blue"))
+
+
+```
+
+**PART C**
+```{r, echo=FALSE}
+# Perform matching
+match_turnout = matchit(GOTV_call ~ factor(voted1996) + AGE + factor(MAJORPTY), data = turnout)
+matched_data = match.data(match_turnout)
+
+# Contingency table for MAJORPTY and GOTV_call in matched data
+match_con_MP_CAL = xtabs(~ MAJORPTY + GOTV_call, data = matched_data) %>%
+  prop.table(margin = 2)
+
+# Contingency table for voted1996 and GOTV_call in matched data
+match_con_96_call = xtabs(~ voted1996 + GOTV_call, data = matched_data) %>%
+  prop.table(margin = 2)
+
+# Mean age by GOTV_call in matched data
+mean_age = mean(matched_data$AGE[matched_data$GOTV_call == 1]) 
+
+# Proportion of those receiving a GOTV call and who voted in 1998 for matched data
+gotv_called = filter(matched_data, GOTV_call == 1)
+call_voted_1998 = filter(gotv_called, voted1998 == 1)
+call_prop_vote_matched = nrow(call_voted_1998) / nrow(gotv_called)
+
+call_prop_vote_matched
+
+# Sample proportion of those not receiving a GOTV call who voted in 1998 for matched data
+no_gotv_called = filter(matched_data, GOTV_call == 0)
+no_call_voted_1998 = filter(no_gotv_called, voted1998 == 1)
+no_call_prop_vote_matched = nrow(no_call_voted_1998) / nrow(no_gotv_called)
+
+no_call_prop_vote_matched
+
+
+matched_confint = prop.test(voted1998 ~ GOTV_call, data = matched_data)
+matched_confint
+```
+
+The analysis indicates that there is no significant difference in the likelihood of voting in the 1998 election between individuals who received a GOTV call and those who did not, as both the hypothesis test (p = 0.2283) and the confidence interval (-0.0329 to 0.1462) suggest. Therefore, the GOTV call does not appear to have had a notable overall effect on voter turnout in the 1998 election.
+
+#Problem 2
+
+**PART A**
+
+```{r, echo=FALSE}
+# Plot 1: Opening vs. Skips
+plot_opening <- ggplot(solder, aes(x = Opening, y = skips)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Relationship between Opening Size and Number of Skips",
+       x = "Opening Size",
+       y = "Number of Skips",
+       caption = "Boxplot showing the distribution of skips across different opening sizes on the solder gun.") +
+  theme_minimal()
+
+# Plot 2: Solder vs. Skips
+plot_solder <- ggplot(solder, aes(x = Solder, y = skips)) +
+  geom_boxplot(fill = "lightgreen", color = "black") +
+  labs(title = "Relationship between Solder Thickness and Number of Skips",
+       x = "Solder Thickness",
+       y = "Number of Skips",
+       caption = "Boxplot showing the distribution of skips across different thicknesses of solder alloy.") +
+  theme_minimal()
+
+# Display the plots
+plot_opening
+plot_solder
+```
+
+**PART B**
+
+```{r, echo=FALSE}
+model = lm(skips ~ Opening:Solder + Solder + Opening, data = solder)
+model
+# Calculate confidence intervals
+model_confint = confint(model, level = 0.95)
+
+coefficients = coef(model)
+
+
+regression_table = get_regression_table(model)
+
+# Print the regression table
+print(regression_table)
+
+
+```
+
+Thick Solder and Large Opening: The coefficient for this combination (0.3933) represents the expected number of skips for the reference category, while holding other variables constant.
+
+Thin Solder: The coefficient (2.2800) indicates the expected change in skips for circuit boards manufactured using thin solder compared to thick solder, independently of other factors.
+
+Medium Opening: The coefficient (2.4067) represents the expected change in skips for circuit boards with a medium opening compared to the reference category, considering other variables are held constant.
+
+Small Opening: The coefficient (5.1267) indicates the expected change in skips for circuit boards with a small opening compared to the reference category, while controlling for other factors.
+
+Medium Opening and Thin Solder: The coefficient for the interaction term (-0.7400) represents the expected change in skips for boards with both a medium opening and thin solder compared to the reference category, considering other variables are held constant.
+
+Small Opening and Thin Solder: The coefficient for this interaction term (9.6533) represents the expected change in skips for boards with both a small opening and thin solder compared to the reference category, while controlling for other factors.
+
+**PART D**
+
+Based on the analysis, I would recommend the combination of Thin Solder and Small Opening to AT&T. This combination is associated with the lowest expected number of skips, as indicated by the highest coefficient (9.6533) in the model. Additionally, the confidence interval for this coefficient suggests that the difference is statistically significant, further supporting this recommendation for minimizing the number of skips in the manufacturing process.
+
